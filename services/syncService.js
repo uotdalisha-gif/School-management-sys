@@ -40,14 +40,13 @@ export const syncService = {
     if (!navigator.onLine || !supabase) return;
 
     try {
-      const { error } = await supabase.rpc('sync_school_data_v2', {
+      const { error } = await supabase.rpc('sync_school_data_v3', {
         p_students: (payload.students || []).map(mapStudent.toDb),
         p_staff: (payload.staff || []).map(mapStaff.toDb),
         p_classes: (payload.classes || []).map(mapClass.toDb),
         p_enrollments: (payload.enrollments || []).map(mapEnrollment.toDb),
         p_grades: (payload.grades || []).map(mapGrade.toDb),
-        p_attendance: (payload.attendance || []).map(mapAttendance.toDb),
-        p_config: []
+        p_attendance: (payload.attendance || []).map(mapAttendance.toDb)
       });
 
       if (error) throw error;
@@ -55,6 +54,8 @@ export const syncService = {
       ['students', 'staff', 'classes', 'enrollments', 'grades', 'attendance'].forEach(table => {
         localStore.setDirty(table, false);
       });
+      
+      console.log('✅ Sync completed successfully');
     } catch (err) {
       console.error('Sync failed:', err);
     }

@@ -28,18 +28,33 @@ export const useSyncEngine = (loading, setError, dataState, dataSetters) => {
         }
     }, [dataState]);
 
-    // Periodically check for dirty data and sync
+    // Check for dirty data and sync
     useEffect(() => {
         if (loading) return;
         
+        // Immediate sync for dirty data
+        const hasDirtyData = Object.keys(dataState).some(key => localStore.isDirty(key));
+        
+        let timeout;
+        if (hasDirtyData) {
+            // Debounce sync to catch rapid updates
+            timeout = setTimeout(() => {
+                triggerSync();
+            }, 2000);
+        }
+
+        // Periodic fallback check
         const interval = setInterval(() => {
-            const hasDirtyData = Object.keys(dataState).some(key => localStore.isDirty(key));
-            if (hasDirtyData) {
+            const isAnyDirty = Object.keys(dataState).some(key => localStore.isDirty(key));
+            if (isAnyDirty) {
                 triggerSync();
             }
-        }, 30000); // Check every 30 seconds
+        }, 60000);
 
-        return () => clearInterval(interval);
+        return () => {
+            if (timeout) clearTimeout(timeout);
+            clearInterval(interval);
+        };
     }, [loading, dataState, triggerSync]);
 
     return {
