@@ -67,7 +67,7 @@ export const mapAttendance = {
   toDb: (a) => ({
     id: a.id,
     student_id: a.studentId,
-    date: a.date,
+    date: a.date || null,
     status: a.status,
   }),
   fromDb: (d) => {

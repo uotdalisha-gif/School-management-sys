@@ -170,9 +170,12 @@ export const DataProvider = ({ children }) => {
           const cleanedJuniorSenior = ["Grammar", "Listening", "Speaking", "Homework", "Reading", "Writing"];
 
           if (Array.isArray(sub)) {
-            configOps.setSubjects({ Kid: [], JuniorSenior: cleanedJuniorSenior });
+            configOps.setSubjects({ Kid: cleanedJuniorSenior, JuniorSenior: cleanedJuniorSenior });
           } else {
-            configOps.setSubjects({ Kid: sub.Kid || [], JuniorSenior: cleanedJuniorSenior });
+            configOps.setSubjects({ 
+              Kid: (sub.Kid && sub.Kid.length > 0) ? sub.Kid : cleanedJuniorSenior, 
+              JuniorSenior: cleanedJuniorSenior 
+            });
           }
         }
 

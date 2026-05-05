@@ -144,7 +144,14 @@ export async function fetchMessages(userId, isAdmin) {
       console.error('[fetchMessages] API error', res.status, err);
       return localMsgs;
     }
-    const { data } = await res.json();
+    let data;
+    try {
+      const parsed = await res.json();
+      data = parsed.data;
+    } catch (e) {
+      console.warn('[fetchMessages] API returned non-JSON. Falling back to local messages.');
+      return localMsgs;
+    }
     const remoteMsgs = (data || []).map(fromDb);
     const locallyReadIds = new Set(getLocallyReadIds());
 

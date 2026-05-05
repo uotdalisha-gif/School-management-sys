@@ -96,22 +96,38 @@ const ClassRow = ({
                   {cls.level}
                 </span>
               </div>
-              <div className="flex items-center text-xs text-slate-600 font-medium dark:text-slate-400">
-                <svg
-                  className="w-3.5 h-3.5 mr-1.5 text-slate-500 dark:text-slate-400 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                  />
-                </svg>
-                <span className="truncate">{teacherName}</span>
+              <div className="flex flex-col gap-1 mt-1">
+                <div className="flex items-center text-xs text-slate-600 font-medium dark:text-slate-400">
+                  <svg
+                    className="w-3.5 h-3.5 mr-1.5 text-slate-500 dark:text-slate-400 shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
+                  <span className="truncate">{teacherName}</span>
+                </div>
+                {cls.schedule && (
+                  <div className="flex items-center text-xs text-slate-500 font-medium dark:text-slate-500">
+                    <svg
+                      className="w-3.5 h-3.5 mr-1.5 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="truncate">{cls.schedule}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
