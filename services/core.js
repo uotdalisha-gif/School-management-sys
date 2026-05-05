@@ -4,7 +4,11 @@ import { supabase } from './supabase.js';
 // --- Internal State ---
 
 export const getAuthToken = () => {
-  return localStorage.getItem('school_admin_token');
+  try {
+    return localStorage.getItem('school_admin_token');
+  } catch (e) {
+    return null;
+  }
 };
 
 /**
@@ -12,8 +16,8 @@ export const getAuthToken = () => {
  */
 export const localStore = {
   get: (key, defaultValue) => {
-    const item = localStorage.getItem(`school_admin_${key}`);
     try {
+      const item = localStorage.getItem(`school_admin_${key}`);
       if (!item) return defaultValue;
       const parsed = JSON.parse(item);
       return parsed ?? defaultValue;
@@ -26,74 +30,82 @@ export const localStore = {
     try {
       localStorage.setItem(`school_admin_${key}`, JSON.stringify(value));
     } catch (err) {
-      console.error(`LocalStore set error for ${key}:`, err);
+      // Ignore quota errors or other storage issues
     }
   },
 
   isDirty: (key) => {
-    return !!localStorage.getItem(`school_admin_${key}_dirty`);
+    try {
+      return !!localStorage.getItem(`school_admin_${key}_dirty`);
+    } catch (e) {
+      return false;
+    }
   },
   
   setDirty: (key, dirty) => {
-    if (dirty) {
-      localStorage.setItem(`school_admin_${key}_dirty`, 'true');
-    } else {
-      localStorage.removeItem(`school_admin_${key}_dirty`);
-    }
+    try {
+      if (dirty) {
+        localStorage.setItem(`school_admin_${key}_dirty`, 'true');
+      } else {
+        localStorage.removeItem(`school_admin_${key}_dirty`);
+      }
+    } catch (e) {}
   }
+};
+
+// --- Config Helpers ---
+
+export const pushConfig = async (key, value) => {
+  localStore.set(key, value);
 };
 
 // --- CRUD Operations (Syncing with Supabase) ---
 
 export async function fetchCollection(table, mapper) {
-  try {
-    // 1. Try to fetch from Supabase first if online and client exists
-    if (navigator.onLine && supabase) {
-      try {
-        const { data, error } = await supabase
-          .from(table)
-          .select('*');
+  console.log(`🔍 Fetching collection: ${table}`);
+  
+  // 1. Always try local first so the screen shows something immediately
+  const localData = localStore.get(table, []);
+  
+  // 2. Background fetch from Supabase if possible
+  if (navigator.onLine && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .select('*');
 
-        if (!error && data) {
-          localStore.set(table, data);
-          
-          if (mapper && typeof mapper === 'function') {
-            return data.map(item => {
-              try {
-                // Handle both object mappers and function mappers
-                return mapper.fromDb ? mapper.fromDb(item) : mapper(item);
-              } catch (e) {
-                return item;
-              }
-            });
-          }
-          return data;
-        }
-      } catch (supaErr) {
-        console.warn('Supabase request failed, using local fallback.');
-      }
-    }
-
-    // 2. Fallback to local storage
-    const local = localStore.get(table, []);
-    if (!Array.isArray(local)) return [];
-
-    if (mapper && typeof mapper === 'function') {
-      return local
-        .filter(item => item !== null && typeof item === 'object')
-        .map(item => {
+      if (!error && data) {
+        console.log(`✅ Fetched ${data.length} items for ${table} from Supabase`);
+        localStore.set(table, data);
+        
+        const mapItem = (item) => {
+          if (!mapper) return item;
           try {
-            return mapper.fromDb ? mapper.fromDb(item) : mapper(item);
+            return (typeof mapper === 'function' && mapper.fromDb) ? mapper.fromDb(item) : (typeof mapper === 'function' ? mapper(item) : (mapper.fromDb ? mapper.fromDb(item) : item));
           } catch (e) {
             return item;
           }
-        });
+        };
+
+        return data.map(mapItem);
+      }
+    } catch (supaErr) {
+      console.warn(`Supabase fetch failed for ${table}:`, supaErr);
     }
-    return local;
-  } catch (err) {
-    console.error(`fetchCollection critical failure for ${table}:`, err);
-    return [];
   }
+
+  // 3. Return local data if online fetch failed or we are offline
+  if (mapper) {
+    return localData.map(item => {
+      try {
+        return (typeof mapper === 'function' && mapper.fromDb) ? mapper.fromDb(item) : (typeof mapper === 'function' ? mapper(item) : (mapper.fromDb ? mapper.fromDb(item) : item));
+      } catch (e) {
+        return item;
+      }
+    });
+  }
+  
+  return localData;
 }
 
 export async function pushCollection(table, items, mapper) {
@@ -109,12 +121,10 @@ export async function deleteRecord(table, id) {
     }
 
     const currentLocal = localStore.get(table, []);
-    if (Array.isArray(currentLocal)) {
-      localStore.set(
-        table,
-        currentLocal.filter((item) => item && item.id !== id)
-      );
-    }
+    localStore.set(
+      table,
+      currentLocal.filter((item) => item && item.id !== id)
+    );
   } catch (err) {
     console.error(`deleteRecord failed for ${table}:`, err);
   }
