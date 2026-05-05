@@ -1,0 +1,278 @@
+/**
+ * Shared utility functions for generating reports and exports.
+ */
+
+// --- Internal Utilities ---
+
+/**
+ * Escapes a CSV field if it contains special characters like commas, quotes, or newlines.
+ */
+const escapeCsvField = (field) => {
+  const stringField = String(field || '');
+  if (
+    stringField.includes(',') ||
+    stringField.includes('"') ||
+    stringField.includes('\n')
+  ) {
+    return `"${stringField.replace(/"/g, '""')}"`;
+  }
+  return stringField;
+};
+
+/**
+ * Calculates the age of a person based on their date of birth string.
+ */
+const calculateAge = (dobString) => {
+  const dob = new Date(dobString);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+/**
+ * Converts a 10-point score to a letter grade.
+ */
+const getLetterGrade = (score) => {
+  if (score >= 9.0) return 'A';
+  if (score >= 8.0) return 'B';
+  if (score >= 7.0) return 'C';
+  if (score >= 6.0) return 'D';
+  return 'F';
+};
+
+// --- Progress Reports ---
+
+/**
+ * Generates a CSV string representing student progress.
+ */
+export const generateStudentProgressCSV = (
+  students,
+  allGrades,
+  allAttendance,
+  config
+) => {
+  const activeConfig = config ? config.filter((c) => c.enabled) : [];
+  const headers = activeConfig.map((c) => c.label);
+
+  const rows = students.map((student) => {
+    const studentGrades = allGrades.filter((g) => g.studentId === student.id);
+    const studentAttendance = allAttendance.filter(
+      (a) => a.studentId === student.id
+    );
+
+    return activeConfig
+      .map((col) => {
+        let value = '';
+
+        switch (col.key) {
+          case 'age':
+            value = calculateAge(student.dob);
+            break;
+          case 'avgScore': {
+            const totalScore = studentGrades.reduce(
+              (sum, grade) => sum + grade.score,
+              0
+            );
+            value =
+              studentGrades.length > 0
+                ? (totalScore / studentGrades.length).toFixed(2)
+                : 'N/A';
+            break;
+          }
+          case 'attendanceRate': {
+            const totalDays = studentAttendance.length;
+            const presentDays = studentAttendance.filter(
+              (a) => a.status === 'Present'
+            ).length;
+            value =
+              totalDays > 0
+                ? ((presentDays / totalDays) * 100).toFixed(0)
+                : 'N/A';
+            break;
+          }
+          default:
+            value = student[col.key];
+        }
+
+        return escapeCsvField(value);
+      })
+      .join(',');
+  });
+
+  return [headers.join(','), ...rows].join('\n');
+};
+
+/**
+ * Generates structured data for a specific class or level export.
+ */
+export const generateClassProgressData = (
+  className,
+  students,
+  allGrades,
+  allAttendance
+) => {
+  return students.map((student) => {
+    const studentGrades = allGrades.filter((g) => g.studentId === student.id);
+    const studentAttendance = allAttendance.filter(
+      (a) => a.studentId === student.id
+    );
+
+    // Attendance
+    const totalDays = studentAttendance.length;
+    const presentDays = studentAttendance.filter(
+      (a) => a.status === 'Present'
+    ).length;
+    const attendanceRate =
+      totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(0) + '%' : 'N/A';
+
+    // Grades
+    const totalScore = studentGrades.reduce(
+      (sum, grade) => sum + grade.score,
+      0
+    );
+    const avgScore =
+      studentGrades.length > 0 ? totalScore / studentGrades.length : 0;
+    const letterGrade = avgScore !== null ? getLetterGrade(avgScore) : 'N/A';
+
+    return {
+      'Student ID': student.id,
+      'Student Name': student.name,
+      'Date of Birth': student.dob,
+      'Contact Phone': student.phone || 'N/A',
+      'Attendance %': attendanceRate,
+      'Average Grade Level': letterGrade,
+    };
+  });
+};
+
+// --- Excel AOA Exports ---
+
+/**
+ * Generates structured Area of Arrays (AoA) for a specific class.
+ */
+export const generateClassExcelDataAOA = (cls, teacher, classStudents) => {
+  const aoa = [];
+  aoa.push(['Br:', 'C2']);
+  aoa.push(['Level:', cls?.level || 'K1B']);
+  aoa.push(['Time:', cls?.schedule || '']);
+  aoa.push(['Room:', cls?.name?.replace('Room ', '') || '']);
+  aoa.push(['Tr:', teacher?.name || '']);
+  aoa.push(['NO', 'NAME', 'SEX', 'PHONE']);
+
+  classStudents.forEach((student, index) => {
+    aoa.push([
+      index + 1,
+      student.name,
+      student.sex === 'Female' ? 'F' : 'M',
+      student.phone || '',
+    ]);
+  });
+
+  // Fill until 30 rows
+  const startIdx = classStudents.length + 1;
+  for (let i = startIdx; i <= 30; i++) {
+    aoa.push([i, '', '', '']);
+  }
+  return aoa;
+};
+
+// --- List Exports (CSV) ---
+
+/**
+ * Generates a simple CSV list of students.
+ */
+export const generateStudentListCSV = (students) => {
+  const headers = ['name', 'sex', 'dob', 'phone', 'enrollmentDate', 'status'];
+  const rows = students.map((s) => {
+    return [
+      escapeCsvField(s.name),
+      escapeCsvField(s.sex),
+      escapeCsvField(s.dob),
+      escapeCsvField(s.phone),
+      escapeCsvField(s.enrollmentDate),
+      escapeCsvField(s.status),
+    ].join(',');
+  });
+  return [headers.join(','), ...rows].join('\n');
+};
+
+/**
+ * Generates a CSV list of staff members.
+ */
+export const generateStaffCSV = (staff) => {
+  const headers = ['Name', 'Role', 'Contact'];
+
+  const rows = staff.map((member) => {
+    return [
+      escapeCsvField(member.name),
+      escapeCsvField(member.role),
+      escapeCsvField(member.contact),
+    ].join(',');
+  });
+
+  return [headers.join(','), ...rows].join('\n');
+};
+
+/**
+ * Generates a detailed CSV roster for a single class.
+ */
+export const generateSingleClassCSV = (
+  cls,
+  allStaff,
+  allStudents,
+  allEnrollments
+) => {
+  const teacher = allStaff.find((s) => s.id === cls.teacherId);
+  const classEnrollments = allEnrollments.filter((e) => e.classId === cls.id);
+  const studentIds = classEnrollments.map((e) => e.studentId);
+
+  const classStudents = allStudents
+    .filter((s) => studentIds.includes(s.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Metadata
+  const metaLines = [
+    'Br: C2',
+    `Level: ${escapeCsvField(cls.level)}`,
+    `Time: ${escapeCsvField(cls.schedule)}`,
+    `Room: ${escapeCsvField(cls.name)}`,
+    `Tr: ${escapeCsvField(teacher?.name || 'Unassigned')}`,
+    '', // Spacing
+  ];
+
+  // Header
+  const tableHeader = 'No,Name,Sex,Phone';
+
+  // Rows
+  const studentRows = classStudents.map((s, index) => {
+    return [
+      index + 1,
+      escapeCsvField(s.name),
+      escapeCsvField(s.sex === 'Female' ? 'F' : 'M'),
+      escapeCsvField(s.phone),
+    ].join(',');
+  });
+
+  return [...metaLines, tableHeader, ...studentRows].join('\n');
+};
+
+/**
+ * Generates a bulk CSV containing rosters for multiple classes.
+ */
+export const generateBulkClassCSV = (
+  selectedClasses,
+  allStaff,
+  allStudents,
+  allEnrollments
+) => {
+  return selectedClasses
+    .map((cls) => {
+      return generateSingleClassCSV(cls, allStaff, allStudents, allEnrollments);
+    })
+    .join('\n\n\n');
+};

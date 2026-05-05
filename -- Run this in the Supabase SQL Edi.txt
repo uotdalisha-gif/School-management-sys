@@ -1,0 +1,911 @@
+-- Run this in the Supabase SQL Editor to create the public bucket for message attachments
+-- Safe to re-run at any time (idempotent).
+
+-- 1. Create the bucket (no-op if already exists)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('attachments', 'attachments', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2. Drop existing policies before re-creating (PostgreSQL has no CREATE POLICY IF NOT EXISTS)
+DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+DROP POLICY IF EXISTS "Auth Insert"   ON storage.objects;
+DROP POLICY IF EXISTS "Auth Update"   ON storage.objects;
+DROP POLICY IF EXISTS "Auth Delete"   ON storage.objects;
+
+-- 3. Allow everyone to read attachments
+CREATE POLICY "Public Access"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'attachments');
+
+-- 4. Allow anyone to insert into attachments
+CREATE POLICY "Auth Insert"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'attachments');
+
+-- 5. Allow anyone to update attachments
+CREATE POLICY "Auth Update"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'attachments');
+
+-- 6. Allow anyone to delete attachments
+CREATE POLICY "Auth Delete"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'attachments');
+-- SECTION 1: CORE TABLES
+
+CREATE TABLE IF NOT EXISTS students (
+    id               TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    sex              TEXT,
+    dob              DATE,
+    phone            TEXT,
+    enrollment_date  DATE,
+    status           TEXT,
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS staff (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    role        TEXT,
+    subject     TEXT,
+    contact     TEXT,
+    hire_date   DATE,
+    password    TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS classes (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    teacher_id  TEXT REFERENCES staff(id) ON DELETE SET NULL,
+    schedule    TEXT,
+    level       TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS enrollments (
+    id             TEXT PRIMARY KEY,
+    student_id     TEXT REFERENCES students(id) ON DELETE CASCADE,
+    class_id       TEXT REFERENCES classes(id)  ON DELETE CASCADE,
+    academic_year  TEXT,
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS grades (
+    id          TEXT PRIMARY KEY,
+    student_id  TEXT REFERENCES students(id) ON DELETE CASCADE,
+    subject     TEXT,
+    score       NUMERIC,
+    term        TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+    id          TEXT PRIMARY KEY,
+    student_id  TEXT REFERENCES students(id) ON DELETE CASCADE,
+    date        DATE,
+    status      TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS staff_permissions (
+    id          TEXT PRIMARY KEY,
+    staff_id    TEXT REFERENCES staff(id) ON DELETE CASCADE,
+    type        TEXT,
+    start_date  DATE,
+    end_date    DATE,
+    reason      TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS config (
+    key         TEXT PRIMARY KEY,
+    value       JSONB,
+    updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id          TEXT PRIMARY KEY,
+    title       TEXT,
+    date        DATE,
+    type        TEXT,
+    description TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id           TEXT PRIMARY KEY,
+    sender_id    TEXT,
+    sender_name  TEXT,
+    recipient_id TEXT,
+    type         TEXT DEFAULT 'message',
+    content      TEXT,
+    metadata     JSONB DEFAULT '{}',
+    is_read      BOOLEAN DEFAULT FALSE,
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS system_backups (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    table_name  TEXT NOT NULL,
+    record_id   TEXT NOT NULL,
+    action      TEXT NOT NULL,   
+    old_data    JSONB,
+    new_data    JSONB,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at  TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '30 days')
+);
+
+-- SECTION 2: INDEXES
+
+CREATE INDEX IF NOT EXISTS idx_enrollments_student    ON enrollments(student_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_class      ON enrollments(class_id);
+CREATE INDEX IF NOT EXISTS idx_grades_student         ON grades(student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_student     ON attendance(student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_date        ON attendance(date);
+CREATE INDEX IF NOT EXISTS idx_staff_permissions_staff ON staff_permissions(staff_id);
+CREATE INDEX IF NOT EXISTS idx_classes_teacher        ON classes(teacher_id);
+CREATE INDEX IF NOT EXISTS idx_messages_recipient     ON messages(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_messages_sender        ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created       ON messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_backups_table   ON system_backups(table_name);
+CREATE INDEX IF NOT EXISTS idx_system_backups_exp     ON system_backups(expires_at);
+
+-- SECTION 2: ROW LEVEL SECURITY
+-- NOTE: PostgreSQL has NO "CREATE POLICY IF NOT EXISTS", so we DROP first.
+
+ALTER TABLE students          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE classes           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE enrollments       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE grades            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE config            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_backups    ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated for students"          ON students;
+CREATE POLICY          "Allow authenticated for students"          ON students          FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for staff"             ON staff;
+CREATE POLICY          "Allow authenticated for staff"             ON staff             FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for classes"           ON classes;
+CREATE POLICY          "Allow authenticated for classes"           ON classes           FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for enrollments"       ON enrollments;
+CREATE POLICY          "Allow authenticated for enrollments"       ON enrollments       FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for grades"            ON grades;
+CREATE POLICY          "Allow authenticated for grades"            ON grades            FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for attendance"        ON attendance;
+CREATE POLICY          "Allow authenticated for attendance"        ON attendance        FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for staff_permissions" ON staff_permissions;
+CREATE POLICY          "Allow authenticated for staff_permissions" ON staff_permissions FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for config"            ON config;
+CREATE POLICY          "Allow authenticated for config"            ON config            FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for events"            ON events;
+CREATE POLICY          "Allow authenticated for events"            ON events            FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for messages"          ON messages;
+CREATE POLICY          "Allow authenticated for messages"          ON messages          FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow authenticated for system_backups"    ON system_backups;
+CREATE POLICY          "Allow authenticated for system_backups"    ON system_backups    FOR ALL USING (true) WITH CHECK (true);
+
+
+-- ============================================================
+-- SECTION 4: STORAGE — signatures bucket
+-- DO NOT manage storage.objects policies via SQL.
+-- Supabase auto-creates a "Public Access" policy when you toggle
+-- a bucket to Public in the dashboard, and that policy is owned
+-- by the storage service role — it CANNOT be created or dropped
+-- via the SQL Editor (error 42710 / permission denied).
+--
+-- Instead, configure the "signatures" bucket through the UI:
+--   Supabase Dashboard → Storage → signatures → Policies
+-- Set it to Public, or add your own policies there.
+-- ============================================================
+
+-- SECTION 3: AUDIT TRIGGER
+
+CREATE OR REPLACE FUNCTION handle_audit_backup()
+RETURNS TRIGGER
+SECURITY DEFINER SET search_path = public
+LANGUAGE plpgsql AS $$
+DECLARE
+    rec_id TEXT;
+BEGIN
+    IF (TG_OP = 'DELETE') THEN
+        rec_id := COALESCE(to_jsonb(OLD)->>'id', to_jsonb(OLD)->>'key', 'unknown');
+        INSERT INTO system_backups (table_name, record_id, action, old_data)
+        VALUES (TG_TABLE_NAME, rec_id, 'DELETE', to_jsonb(OLD));
+        RETURN OLD;
+    ELSIF (TG_OP = 'UPDATE') THEN
+        rec_id := COALESCE(to_jsonb(NEW)->>'id', to_jsonb(NEW)->>'key', 'unknown');
+        INSERT INTO system_backups (table_name, record_id, action, old_data, new_data)
+        VALUES (TG_TABLE_NAME, rec_id, 'UPDATE', to_jsonb(OLD), to_jsonb(NEW));
+        RETURN NEW;
+    ELSIF (TG_OP = 'INSERT') THEN
+        rec_id := COALESCE(to_jsonb(NEW)->>'id', to_jsonb(NEW)->>'key', 'unknown');
+        INSERT INTO system_backups (table_name, record_id, action, new_data)
+        VALUES (TG_TABLE_NAME, rec_id, 'INSERT', to_jsonb(NEW));
+        RETURN NEW;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+-- Secure the function from being called by anyone except internal system triggers
+REVOKE ALL ON FUNCTION handle_audit_backup() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION handle_audit_backup() TO service_role;
+GRANT EXECUTE ON FUNCTION handle_audit_backup() TO postgres;
+
+DO $$
+DECLARE
+    t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['students','staff','classes','grades','attendance','config']
+    LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS tr_audit_%I ON %I', t, t);
+        EXECUTE format(
+            'CREATE TRIGGER tr_audit_%I
+             AFTER INSERT OR UPDATE OR DELETE ON %I
+             FOR EACH ROW EXECUTE FUNCTION handle_audit_backup()',
+            t, t
+        );
+    END LOOP;
+END $$;
+-- ============================================================
+-- MESSAGES TABLE for internal staff ↔ admin communication
+-- Run this in Supabase SQL Editor
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    sender_id TEXT NOT NULL,           -- staff ID or 'admin'
+    sender_name TEXT NOT NULL,
+    recipient_id TEXT NOT NULL,        -- staff ID or 'admin' or 'all'
+    type TEXT DEFAULT 'text',          -- text | leave_request | sick_report | incident | announcement
+    content TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}',       -- { start_date, end_date, leave_type, status, severity }
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all for messages" ON messages;
+CREATE POLICY "Allow all for messages" ON messages FOR ALL USING (true) WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS messages_recipient_idx ON messages(recipient_id);
+CREATE INDEX IF NOT EXISTS messages_sender_idx ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages(created_at DESC);
+-- ============================================================
+-- MISSING TABLES FIX
+-- Run this in your Supabase SQL Editor to add the missing tables
+-- that are causing 404 errors on localhost and Netlify.
+-- ============================================================
+
+-- 1. Staff Permissions Table
+CREATE TABLE IF NOT EXISTS staff_permissions (
+    id TEXT PRIMARY KEY,
+    staff_id TEXT REFERENCES staff(id) ON DELETE CASCADE,
+    type TEXT,
+    start_date DATE,
+    end_date DATE,
+    reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 2. Events Table
+CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    date TEXT,
+    type TEXT,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 3. Daily Logs Table (Guard dashboard)
+CREATE TABLE IF NOT EXISTS daily_logs (
+    id TEXT PRIMARY KEY,
+    staff_id TEXT REFERENCES staff(id) ON DELETE SET NULL,
+    type TEXT,
+    person_name TEXT,
+    purpose TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 4. Incident Reports Table (Guard dashboard)
+CREATE TABLE IF NOT EXISTS incident_reports (
+    id TEXT PRIMARY KEY,
+    staff_id TEXT REFERENCES staff(id) ON DELETE SET NULL,
+    title TEXT,
+    description TEXT,
+    severity TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. Room Statuses Table (Cleaner dashboard)
+CREATE TABLE IF NOT EXISTS room_statuses (
+    id TEXT PRIMARY KEY,
+    room_name TEXT,
+    status TEXT,
+    last_updated_by TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================================
+-- Enable Row Level Security (RLS) - Safe open policy for now
+-- ============================================================
+ALTER TABLE staff_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE incident_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_statuses ENABLE ROW LEVEL SECURITY;
+
+-- Allow all operations (anon key) - same as your other tables
+DROP POLICY IF EXISTS "Allow all for staff_permissions" ON staff_permissions;
+CREATE POLICY "Allow all for staff_permissions" ON staff_permissions FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for events" ON events;
+CREATE POLICY "Allow all for events" ON events FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for daily_logs" ON daily_logs;
+CREATE POLICY "Allow all for daily_logs" ON daily_logs FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for incident_reports" ON incident_reports;
+CREATE POLICY "Allow all for incident_reports" ON incident_reports FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for room_statuses" ON room_statuses;
+CREATE POLICY "Allow all for room_statuses" ON room_statuses FOR ALL USING (true) WITH CHECK (true);
+create table if not exists public.students (
+  id text primary key,
+  name text not null,
+  sex text check (sex in ('Male', 'Female')),
+  dob date,
+  phone text,
+  enrollment_date date default current_date,
+  status text default 'Active',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table if not exists public.staff (
+  id text primary key,
+  name text not null,
+  role text not null,
+  subject text,
+  contact text,
+  hire_date date default current_date,
+  password text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table if not exists public.classes (
+  id text primary key,
+  name text not null,
+  teacher_id text references public.staff(id) on delete set null,
+  schedule text,
+  level text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table if not exists public.enrollments (
+  id text primary key,
+  student_id text not null references public.students(id) on delete cascade,
+  class_id text not null references public.classes(id) on delete cascade,
+  academic_year text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique(student_id, class_id, academic_year)
+);
+
+create table if not exists public.grades (
+  id text primary key,
+  student_id text not null references public.students(id) on delete cascade,
+  subject text not null,
+  score numeric(4,2) check (score >= 0 and score <= 10),
+  term text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table if not exists public.attendance (
+  id text primary key,
+  student_id text not null references public.students(id) on delete cascade,
+  date date not null,
+  status text check (status in ('Present', 'Absent', 'Late')),
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique(student_id, date)
+);
+
+create table if not exists public.school_events (
+  id text primary key,
+  title text not null,
+  date date not null,
+  description text,
+  type text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table if not exists public.settings (
+  id text primary key default 'global',
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table if not exists public.audit_log (
+  id uuid primary key default uuid_generate_v4(),
+  table_name text not null,
+  record_id text not null,
+  action text not null check (action in ('INSERT', 'UPDATE', 'DELETE')),
+  old_data jsonb,
+  new_data jsonb,
+  timestamp timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create or replace function public.sync_school_data_v2(
+  p_students jsonb,
+  p_staff jsonb,
+  p_staff_permissions jsonb,
+  p_daily_logs jsonb,
+  p_incident_reports jsonb,
+  p_room_statuses jsonb,
+  p_classes jsonb,
+  p_enrollments jsonb,
+  p_grades jsonb,
+  p_attendance jsonb,
+  p_events jsonb,
+  p_config jsonb
+) returns void as $$
+begin
+  delete from public.students;
+  insert into public.students (id, name, sex, dob, phone, enrollment_date, status)
+  select 
+    (value->>'id'), (value->>'name'), (value->>'sex'), 
+    (value->>'dob')::date, (value->>'phone'), 
+    (value->>'enrollment_date')::date, (value->>'status')
+  from jsonb_array_elements(p_students);
+
+  delete from public.staff;
+  insert into public.staff (id, name, role, subject, contact, hire_date, password)
+  select 
+    (value->>'id'), (value->>'name'), (value->>'role'), 
+    (value->>'subject'), (value->>'contact'), (value->>'hire_date')::date,
+    (value->>'password')
+  from jsonb_array_elements(p_staff);
+
+  delete from public.staff_permissions;
+  insert into public.staff_permissions (id, staff_id, type, start_date, end_date, reason, created_at)
+  select 
+    (value->>'id'), (value->>'staff_id'), (value->>'type'), 
+    (value->>'start_date')::date, (value->>'end_date')::date, 
+    (value->>'reason'), (value->>'created_at')::timestamp with time zone
+  from jsonb_array_elements(p_staff_permissions);
+
+  delete from public.daily_logs;
+  insert into public.daily_logs (id, staff_id, type, person_name, purpose, timestamp)
+  select 
+    (value->>'id'), (value->>'staff_id'), (value->>'type'), 
+    (value->>'person_name'), (value->>'purpose'), 
+    (value->>'timestamp')::timestamp with time zone
+  from jsonb_array_elements(p_daily_logs);
+
+  delete from public.incident_reports;
+  insert into public.incident_reports (id, staff_id, title, description, severity, timestamp)
+  select 
+    (value->>'id'), (value->>'staff_id'), (value->>'title'), 
+    (value->>'description'), (value->>'severity'), 
+    (value->>'timestamp')::timestamp with time zone
+  from jsonb_array_elements(p_incident_reports);
+
+  delete from public.room_statuses;
+  insert into public.room_statuses (id, room_name, status, last_updated_by, timestamp)
+  select 
+    (value->>'id'), (value->>'room_name'), (value->>'status'), 
+    (value->>'last_updated_by'), (value->>'timestamp')::timestamp with time zone
+  from jsonb_array_elements(p_room_statuses);
+
+  delete from public.classes;
+  insert into public.classes (id, name, teacher_id, schedule, level)
+  select 
+    (value->>'id'), (value->>'name'), (value->>'teacher_id'), 
+    (value->>'schedule'), (value->>'level')
+  from jsonb_array_elements(p_classes);
+
+  delete from public.enrollments;
+  insert into public.enrollments (id, student_id, class_id, academic_year)
+  select 
+    (value->>'id'), (value->>'student_id'), (value->>'class_id'), (value->>'academic_year')
+  from jsonb_array_elements(p_enrollments);
+
+  delete from public.grades;
+  insert into public.grades (id, student_id, subject, score, term)
+  select 
+    (value->>'id'), (value->>'student_id'), (value->>'subject'), 
+    (value->>'score')::numeric, (value->>'term')
+  from jsonb_array_elements(p_grades);
+
+  delete from public.attendance;
+  insert into public.attendance (id, student_id, date, status)
+  select 
+    (value->>'id'), (value->>'student_id'), (value->>'date')::date, (value->>'status')
+  from jsonb_array_elements(p_attendance);
+
+  delete from public.school_events;
+  insert into public.school_events (id, title, date, description, type)
+  select 
+    (value->>'id'), (value->>'title'), (value->>'date')::date, 
+    (value->>'description'), (value->>'type')
+  from jsonb_array_elements(p_events);
+
+  -- 8. Sync Settings
+  delete from public.settings;
+  insert into public.settings (id, data)
+  select (value->>'key'), (value->'value')
+  from jsonb_array_elements(p_config);
+
+end;
+$$ language plpgsql security definer;
+
+-- Audit Function
+create or replace function public.process_audit_log() returns trigger as $$
+begin
+  if (tg_op = 'DELETE') then
+    insert into public.audit_log (table_name, record_id, action, old_data)
+    values (tg_table_name, old.id, 'DELETE', row_to_json(old)::jsonb);
+    return old;
+  elsif (tg_op = 'UPDATE') then
+    insert into public.audit_log (table_name, record_id, action, old_data, new_data)
+    values (tg_table_name, new.id, 'UPDATE', row_to_json(old)::jsonb, row_to_json(new)::jsonb);
+    return new;
+  elsif (tg_op = 'INSERT') then
+    insert into public.audit_log (table_name, record_id, action, new_data)
+    values (tg_table_name, new.id, 'INSERT', row_to_json(new)::jsonb);
+    return new;
+  end if;
+  return null;
+end;
+$$ language plpgsql;
+
+-- Enable RLS
+alter table public.students enable row level security;
+alter table public.staff enable row level security;
+alter table public.classes enable row level security;
+alter table public.enrollments enable row level security;
+alter table public.grades enable row level security;
+alter table public.attendance enable row level security;
+alter table public.school_events enable row level security;
+alter table public.settings enable row level security;
+alter table public.audit_log enable row level security;
+
+drop policy if exists "Enable all access for authenticated users" on public.students;
+create policy "Enable all access for authenticated users" on public.students for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.staff;
+create policy "Enable all access for authenticated users" on public.staff for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.classes;
+create policy "Enable all access for authenticated users" on public.classes for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.enrollments;
+create policy "Enable all access for authenticated users" on public.enrollments for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.grades;
+create policy "Enable all access for authenticated users" on public.grades for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.attendance;
+create policy "Enable all access for authenticated users" on public.attendance for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.school_events;
+create policy "Enable all access for authenticated users" on public.school_events for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.settings;
+create policy "Enable all access for authenticated users" on public.settings for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.audit_log;
+create policy "Enable all access for authenticated users" on public.audit_log for all to authenticated using (true) with check (true);
+
+create table if not exists public.staff_permissions (
+  id text primary key,
+  staff_id text not null references public.staff(id) on delete cascade,
+  type text not null check (type in ('Annual Leave', 'Personal Leave', 'Non-Personal Leave')),
+  start_date date not null,
+  end_date date not null,
+  reason text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Enable RLS
+alter table public.staff_permissions enable row level security;
+drop policy if exists "Enable all access for authenticated users" on public.staff_permissions;
+create policy "Enable all access for authenticated users" on public.staff_permissions for all to authenticated using (true) with check (true);
+
+drop trigger if exists on_staff_permissions_change on public.staff_permissions;
+create trigger on_staff_permissions_change
+after insert or update or delete on public.staff_permissions
+for each row execute function public.process_audit_log();
+
+create table if not exists public.daily_logs (
+  id text primary key,
+  staff_id text not null references public.staff(id) on delete cascade,
+  type text not null check (type in ('Entry', 'Exit')),
+  person_name text not null,
+  purpose text,
+  timestamp timestamp with time zone default now()
+);
+
+create table if not exists public.incident_reports (
+  id text primary key,
+  staff_id text not null references public.staff(id) on delete cascade,
+  title text not null,
+  description text,
+  severity text check (severity in ('Low', 'Medium', 'High')),
+  timestamp timestamp with time zone default now()
+);
+
+create table if not exists public.room_statuses (
+  id text primary key,
+  room_name text not null,
+  status text check (status in ('Cleaned', 'Needs Attention')),
+  last_updated_by text references public.staff(id),
+  timestamp timestamp with time zone default now()
+);
+
+-- Enable RLS
+alter table public.daily_logs enable row level security;
+alter table public.incident_reports enable row level security;
+alter table public.room_statuses enable row level security;
+
+drop policy if exists "Enable all access for authenticated users" on public.daily_logs;
+create policy "Enable all access for authenticated users" on public.daily_logs for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.incident_reports;
+create policy "Enable all access for authenticated users" on public.incident_reports for all to authenticated using (true) with check (true);
+drop policy if exists "Enable all access for authenticated users" on public.room_statuses;
+create policy "Enable all access for authenticated users" on public.room_statuses for all to authenticated using (true) with check (true);
+
+drop trigger if exists on_daily_logs_change on public.daily_logs;
+create trigger on_daily_logs_change after insert or update or delete on public.daily_logs for each row execute function public.process_audit_log();
+drop trigger if exists on_incident_reports_change on public.incident_reports;
+create trigger on_incident_reports_change after insert or update or delete on public.incident_reports for each row execute function public.process_audit_log();
+drop trigger if exists on_room_statuses_change on public.room_statuses;
+create trigger on_room_statuses_change after insert or update or delete on public.room_statuses for each row execute function public.process_audit_log();
+-- SECTION 1: CORE TABLES
+
+CREATE TABLE IF NOT EXISTS students (
+    id               TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    sex              TEXT,
+    dob              DATE,
+    phone            TEXT,
+    enrollment_date  DATE,
+    status           TEXT,
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS staff (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    role        TEXT,
+    subject     TEXT,
+    contact     TEXT,
+    hire_date   DATE,
+    password    TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS classes (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    teacher_id  TEXT REFERENCES staff(id) ON DELETE SET NULL,
+    schedule    TEXT,
+    level       TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS enrollments (
+    id             TEXT PRIMARY KEY,
+    student_id     TEXT REFERENCES students(id) ON DELETE CASCADE,
+    class_id       TEXT REFERENCES classes(id)  ON DELETE CASCADE,
+    academic_year  TEXT,
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS grades (
+    id          TEXT PRIMARY KEY,
+    student_id  TEXT REFERENCES students(id) ON DELETE CASCADE,
+    subject     TEXT,
+    score       NUMERIC,
+    term        TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+    id          TEXT PRIMARY KEY,
+    student_id  TEXT REFERENCES students(id) ON DELETE CASCADE,
+    date        DATE,
+    status      TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS staff_permissions (
+    id          TEXT PRIMARY KEY,
+    staff_id    TEXT REFERENCES staff(id) ON DELETE CASCADE,
+    type        TEXT,
+    start_date  DATE,
+    end_date    DATE,
+    reason      TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Key-value config store
+CREATE TABLE IF NOT EXISTS config (
+    key         TEXT PRIMARY KEY,
+    value       JSONB,
+    updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id          TEXT PRIMARY KEY,
+    title       TEXT,
+    date        DATE,
+    type        TEXT,
+    description TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id           TEXT PRIMARY KEY,
+    sender_id    TEXT,
+    sender_name  TEXT,
+    recipient_id TEXT,
+    type         TEXT DEFAULT 'message',
+    content      TEXT,
+    metadata     JSONB DEFAULT '{}',
+    is_read      BOOLEAN DEFAULT FALSE,
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS system_backups (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    table_name  TEXT NOT NULL,
+    record_id   TEXT NOT NULL,
+    action      TEXT NOT NULL,   -- 'INSERT' | 'UPDATE' | 'DELETE'
+    old_data    JSONB,
+    new_data    JSONB,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at  TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '30 days')
+);
+
+-- SECTION 2: INDEXES
+
+CREATE INDEX IF NOT EXISTS idx_enrollments_student  ON enrollments(student_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_class     ON enrollments(class_id);
+CREATE INDEX IF NOT EXISTS idx_grades_student        ON grades(student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_student    ON attendance(student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_date       ON attendance(date);
+CREATE INDEX IF NOT EXISTS idx_staff_permissions_staff ON staff_permissions(staff_id);
+CREATE INDEX IF NOT EXISTS idx_messages_recipient    ON messages(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_messages_sender       ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created      ON messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_backups_table  ON system_backups(table_name);
+CREATE INDEX IF NOT EXISTS idx_system_backups_exp    ON system_backups(expires_at);
+
+-- SECTION 3: ROW LEVEL SECURITY
+-- NOTE: PostgreSQL has NO "CREATE POLICY IF NOT EXISTS", so we DROP first.
+
+ALTER TABLE students          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE classes           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE enrollments       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE grades            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE staff_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE config            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_backups    ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all for students"          ON students;
+CREATE POLICY          "Allow all for students"          ON students          FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for staff"             ON staff;
+CREATE POLICY          "Allow all for staff"             ON staff             FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for classes"           ON classes;
+CREATE POLICY          "Allow all for classes"           ON classes           FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for enrollments"       ON enrollments;
+CREATE POLICY          "Allow all for enrollments"       ON enrollments       FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for grades"            ON grades;
+CREATE POLICY          "Allow all for grades"            ON grades            FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for attendance"        ON attendance;
+CREATE POLICY          "Allow all for attendance"        ON attendance        FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for staff_permissions" ON staff_permissions;
+CREATE POLICY          "Allow all for staff_permissions" ON staff_permissions FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for config"            ON config;
+CREATE POLICY          "Allow all for config"            ON config            FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for events"            ON events;
+CREATE POLICY          "Allow all for events"            ON events            FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for messages"          ON messages;
+CREATE POLICY          "Allow all for messages"          ON messages          FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all for system_backups"    ON system_backups;
+CREATE POLICY          "Allow all for system_backups"    ON system_backups    FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- SECTION 4: STORAGE — signatures bucket
+-- DO NOT manage storage.objects policies via SQL.
+-- Supabase auto-creates a "Public Access" policy when you toggle
+-- a bucket to Public in the dashboard, and that policy is owned
+-- by the storage service role — it CANNOT be created or dropped
+-- via the SQL Editor (error 42710 / permission denied).
+--
+-- Instead, configure the "signatures" bucket through the UI:
+--   Supabase Dashboard → Storage → signatures → Policies
+-- Set it to Public, or add your own policies there.
+-- ============================================================
+
+-- SECTION 4: AUDIT / BACKUP TRIGGER
+
+CREATE OR REPLACE FUNCTION handle_audit_backup()
+RETURNS TRIGGER
+SECURITY DEFINER SET search_path = public
+LANGUAGE plpgsql AS $$
+DECLARE
+    rec_id TEXT;
+BEGIN
+    IF (TG_OP = 'DELETE') THEN
+        rec_id := COALESCE(to_jsonb(OLD)->>'id', to_jsonb(OLD)->>'key', 'unknown');
+        INSERT INTO system_backups (table_name, record_id, action, old_data)
+        VALUES (TG_TABLE_NAME, rec_id, 'DELETE', to_jsonb(OLD));
+        RETURN OLD;
+    ELSIF (TG_OP = 'UPDATE') THEN
+        rec_id := COALESCE(to_jsonb(NEW)->>'id', to_jsonb(NEW)->>'key', 'unknown');
+        INSERT INTO system_backups (table_name, record_id, action, old_data, new_data)
+        VALUES (TG_TABLE_NAME, rec_id, 'UPDATE', to_jsonb(OLD), to_jsonb(NEW));
+        RETURN NEW;
+    ELSIF (TG_OP = 'INSERT') THEN
+        rec_id := COALESCE(to_jsonb(NEW)->>'id', to_jsonb(NEW)->>'key', 'unknown');
+        INSERT INTO system_backups (table_name, record_id, action, new_data)
+        VALUES (TG_TABLE_NAME, rec_id, 'INSERT', to_jsonb(NEW));
+        RETURN NEW;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+-- Attach triggers (drops first so re-running is safe)
+DO $$
+DECLARE
+    t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['students','staff','classes','grades','attendance','config']
+    LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS tr_audit_%I ON %I', t, t);
+        EXECUTE format(
+            'CREATE TRIGGER tr_audit_%I
+             AFTER INSERT OR UPDATE OR DELETE ON %I
+             FOR EACH ROW EXECUTE FUNCTION handle_audit_backup()',
+            t, t
+        );
+    END LOOP;
+END $$;
+
+-- SECTION 5: HELPER FUNCTIONS
+
+-- Cleanup expired backup records (run periodically via cron or manually)
+CREATE OR REPLACE FUNCTION cleanup_old_backups()
+RETURNS VOID
+SECURITY DEFINER SET search_path = public
+LANGUAGE plpgsql AS $$
+BEGIN
+    DELETE FROM system_backups WHERE expires_at < NOW();
+END;
+$$;
+-- Usage: SELECT cleanup_old_backups();
+
