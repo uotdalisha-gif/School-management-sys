@@ -14,6 +14,7 @@ export const mapStudent = {
     phone: s.phone || null,
     enrollment_date: s.enrollmentDate || null,
     status: s.status,
+    tuition: s.tuition || 0,
   }),
   fromDb: (d) => ({
     id: d.id,
@@ -23,6 +24,7 @@ export const mapStudent = {
     phone: d.phone,
     enrollmentDate: d.enrollmentDate || d.enrollment_date,
     status: d.status,
+    tuition: d.tuition || 0,
   }),
 };
 
@@ -154,6 +156,8 @@ export const mapClass = {
     teacher_id: c.teacherId || null,
     schedule: c.schedule,
     level: c.level,
+    room: c.room || null,
+    students_count: c.studentsCount || 0,
   }),
   fromDb: (d) => ({
     id: d.id,
@@ -161,6 +165,8 @@ export const mapClass = {
     teacherId: d.teacherId || d.teacher_id,
     schedule: d.schedule,
     level: d.level,
+    room: d.room || null,
+    studentsCount: d.studentsCount || d.students_count || 0,
   }),
 };
 // --- Helper for ID generation ---
