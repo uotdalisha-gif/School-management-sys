@@ -115,18 +115,25 @@ export async function pushCollection(table, items, mapper) {
 }
 
 export async function deleteRecord(table, id) {
-  try {
-    if (navigator.onLine && supabase) {
-      await supabase.from(table).delete().eq('id', id).catch(() => {});
-    }
+  // 1. Delete from local storage first
+  const currentLocal = localStore.get(table, []);
+  localStore.set(
+    table,
+    currentLocal.filter((item) => item && item.id !== id)
+  );
 
-    const currentLocal = localStore.get(table, []);
-    localStore.set(
-      table,
-      currentLocal.filter((item) => item && item.id !== id)
-    );
-  } catch (err) {
-    console.error(`deleteRecord failed for ${table}:`, err);
+  // 2. Delete from Supabase
+  if (navigator.onLine && supabase) {
+    try {
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) {
+        console.error(`❌ Supabase DELETE failed for ${table}/${id}:`, error.message);
+      } else {
+        console.log(`✅ Deleted ${id} from ${table} in Supabase`);
+      }
+    } catch (err) {
+      console.error(`❌ Supabase DELETE exception for ${table}/${id}:`, err);
+    }
   }
 }
 
