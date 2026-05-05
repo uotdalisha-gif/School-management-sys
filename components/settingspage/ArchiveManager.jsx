@@ -196,8 +196,56 @@ const ArchiveManager = () => {
           )}
         </div>
 
+        {/* Batch Action Bar - Sticky Top */}
+        <AnimatePresence>
+          {selectedIds.length > 0 && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-b border-slate-100 dark:border-slate-800"
+            >
+              <div className="px-6 py-3 bg-primary-50/50 dark:bg-primary-900/10 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-full bg-primary-500 text-white flex items-center justify-center text-xs font-black">
+                    {selectedIds.length}
+                  </div>
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300 tracking-tight">
+                    {selectedIds.length === 1 ? 'item' : 'items'} selected
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSelectedIds([])}
+                    className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBatchRestore}
+                    disabled={isProcessing}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-2xl text-xs font-black hover:bg-emerald-600 transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isProcessing ? 'animate-spin' : ''}`} />
+                    Restore Selected
+                  </button>
+                  <button
+                    onClick={handleBatchDelete}
+                    disabled={isProcessing}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 text-white rounded-2xl text-xs font-black hover:bg-rose-600 transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete All
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* List Content */}
-        <div className="flex-1 relative">
+        <div className="flex-1">
           <AnimatePresence mode="wait">
             {filteredItems.length === 0 ? (
               <motion.div
@@ -272,50 +320,6 @@ const ArchiveManager = () => {
             )}
           </AnimatePresence>
         </div>
-
-        {/* Batch Action Bar */}
-        <AnimatePresence>
-          {selectedIds.length > 0 && (
-            <motion.div
-              initial={{ y: 100 }}
-              animate={{ y: 0 }}
-              exit={{ y: 100 }}
-              className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 p-4 rounded-3xl shadow-2xl flex items-center justify-between z-50 border border-white/10 dark:border-slate-200"
-            >
-              <div className="flex items-center gap-3 pl-2">
-                <div className="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-xs font-black">
-                  {selectedIds.length}
-                </div>
-                <span className="text-sm font-bold tracking-tight">Items selected</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSelectedIds([])}
-                  className="px-4 py-2 text-xs font-bold hover:bg-white/10 dark:hover:bg-slate-100 rounded-xl transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleBatchRestore}
-                  disabled={isProcessing}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-2xl text-xs font-black hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isProcessing ? 'animate-spin' : ''}`} />
-                  Restore Selected
-                </button>
-                <button
-                  onClick={handleBatchDelete}
-                  disabled={isProcessing}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 text-white rounded-2xl text-xs font-black hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20 disabled:opacity-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Delete All
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       <ConfirmModal
