@@ -1,20 +1,10 @@
 import { TABLES } from '../database/schema.js';
+import { supabase } from './supabase.js';
 
 // --- Internal State ---
 
 export const getAuthToken = () => {
   return localStorage.getItem('school_admin_token');
-};
-
-const getAuthHeaders = () => {
-  const token = getAuthToken();
-  const headers = {
-    'Content-Type': 'application/json'
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
 };
 
 /**
@@ -28,7 +18,6 @@ export const localStore = {
       const parsed = JSON.parse(item);
       return parsed ?? defaultValue;
     } catch (err) {
-      console.error(`LocalStore get error for ${key}:`, err);
       return defaultValue;
     }
   },
@@ -41,43 +30,68 @@ export const localStore = {
     }
   },
 
-  isDirty: (key) => false,
-  setDirty: (key, dirty) => {},
-  trackDirtyId: (table, id) => {},
-  getDirtyIds: (table) => [],
-  clearDirtyIds: (table) => {},
+  isDirty: (key) => {
+    return !!localStorage.getItem(`school_admin_${key}_dirty`);
+  },
+  
+  setDirty: (key, dirty) => {
+    if (dirty) {
+      localStorage.setItem(`school_admin_${key}_dirty`, 'true');
+    } else {
+      localStorage.removeItem(`school_admin_${key}_dirty`);
+    }
+  }
 };
 
-// --- Config Helpers ---
-
-export const pushConfig = async (key, value) => {
-  localStore.set(key, value);
-};
-
-// --- CRUD Operations (Local Only with Mapping) ---
+// --- CRUD Operations (Syncing with Supabase) ---
 
 export async function fetchCollection(table, mapper) {
   try {
+    // 1. Try to fetch from Supabase first if online and client exists
+    if (navigator.onLine && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from(table)
+          .select('*');
+
+        if (!error && data) {
+          localStore.set(table, data);
+          
+          if (mapper && typeof mapper === 'function') {
+            return data.map(item => {
+              try {
+                // Handle both object mappers and function mappers
+                return mapper.fromDb ? mapper.fromDb(item) : mapper(item);
+              } catch (e) {
+                return item;
+              }
+            });
+          }
+          return data;
+        }
+      } catch (supaErr) {
+        console.warn('Supabase request failed, using local fallback.');
+      }
+    }
+
+    // 2. Fallback to local storage
     const local = localStore.get(table, []);
-    
     if (!Array.isArray(local)) return [];
 
-    // Filter out nulls/corrupted entries and apply mapper safely
     if (mapper && typeof mapper === 'function') {
       return local
         .filter(item => item !== null && typeof item === 'object')
         .map(item => {
           try {
-            return mapper(item);
+            return mapper.fromDb ? mapper.fromDb(item) : mapper(item);
           } catch (e) {
-            console.warn(`Mapper failed for item in ${table}:`, e);
-            return item; // Fallback to raw item if mapper crashes
+            return item;
           }
         });
     }
     return local;
   } catch (err) {
-    console.error(`fetchCollection failed for ${table}:`, err);
+    console.error(`fetchCollection critical failure for ${table}:`, err);
     return [];
   }
 }
@@ -85,24 +99,26 @@ export async function fetchCollection(table, mapper) {
 export async function pushCollection(table, items, mapper) {
   if (!Array.isArray(items)) return;
   localStore.set(table, items);
+  localStore.setDirty(table, true);
 }
 
 export async function deleteRecord(table, id) {
   try {
+    if (navigator.onLine && supabase) {
+      await supabase.from(table).delete().eq('id', id).catch(() => {});
+    }
+
     const currentLocal = localStore.get(table, []);
-    if (!Array.isArray(currentLocal)) return;
-    
-    localStore.set(
-      table,
-      currentLocal.filter((item) => item && item.id !== id)
-    );
+    if (Array.isArray(currentLocal)) {
+      localStore.set(
+        table,
+        currentLocal.filter((item) => item && item.id !== id)
+      );
+    }
   } catch (err) {
     console.error(`deleteRecord failed for ${table}:`, err);
-    throw new Error(`Failed to delete from ${table}`);
   }
 }
-
-// --- Cache Management ---
 
 export function clearLocalCache() {
   const tables = Object.values(TABLES);

@@ -4,7 +4,6 @@ import { localStore } from '../../services/core';
 
 /**
  * Hook to manage synchronization engine and background refresh.
- * BACKEND SYNC REMOVED as per user request.
  */
 export const useSyncEngine = (loading, setError, dataState, dataSetters) => {
     const [isSyncing, setIsSyncing] = useState(false);
@@ -12,28 +11,41 @@ export const useSyncEngine = (loading, setError, dataState, dataSetters) => {
     const isSyncingRef = useRef(false);
 
     const triggerSync = useCallback(async () => {
-        // Remote sync disabled
-        return;
-    }, []);
+        if (isSyncingRef.current || !navigator.onLine) return;
+        
+        try {
+            isSyncingRef.current = true;
+            setIsSyncing(true);
+            
+            await apiService.syncAll(dataState);
+            
+            setLastSyncedAt(new Date());
+        } catch (err) {
+            console.error('Auto-sync failed:', err);
+        } finally {
+            setIsSyncing(false);
+            isSyncingRef.current = false;
+        }
+    }, [dataState]);
 
-    // --- Periodic Remote Refresh (DISABLED) ---
+    // Periodically check for dirty data and sync
     useEffect(() => {
         if (loading) return;
         
-        const handleStorageChange = (e) => {
-            if (e.key && e.key.startsWith('school_admin_')) {
-                // We can still trigger local state updates if storage changes in another tab
-                // but we don't need background refresh from a server anymore.
+        const interval = setInterval(() => {
+            const hasDirtyData = Object.keys(dataState).some(key => localStore.isDirty(key));
+            if (hasDirtyData) {
+                triggerSync();
             }
-        };
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
-    }, [loading]);
+        }, 30000); // Check every 30 seconds
+
+        return () => clearInterval(interval);
+    }, [loading, dataState, triggerSync]);
 
     return {
-        isSyncing: false,
-        lastSyncedAt: null,
-        setLastSyncedAt: () => {},
+        isSyncing,
+        lastSyncedAt,
+        setLastSyncedAt,
         triggerSync
     };
 };
