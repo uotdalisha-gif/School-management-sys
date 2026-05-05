@@ -1,9 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useData } from "../../context/DataContext";
 import ConfirmModal from "../ConfirmModal";
 import {
   Archive,
-  Users,
   GraduationCap,
   UserRound,
   RefreshCw,
@@ -11,6 +10,10 @@ import {
   Inbox,
   Search,
   AlertCircle,
+  CheckSquare,
+  Square,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -27,284 +30,301 @@ const ArchiveManager = () => {
     deleteStaff,
   } = useData();
 
-  const [activeTab, setActiveTab] = useState("classes");
+  const [activeTab, setActiveTab] = useState("students");
+  const [selectedIds, setSelectedIds] = useState([]);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Filter archived items
-  const archivedClasses = classes.filter((cls) => cls.isArchived === true);
-  const archivedStudents = students.filter((stu) => stu.isArchived === true);
-  const archivedStaff = staff.filter((s) => s.isArchived === true);
+  const archivedClasses = useMemo(() => classes.filter((cls) => cls.isArchived === true), [classes]);
+  const archivedStudents = useMemo(() => students.filter((stu) => stu.isArchived === true), [students]);
+  const archivedStaff = useMemo(() => staff.filter((s) => s.isArchived === true), [staff]);
 
-  const getFilteredItems = (items) => {
-    if (!searchQuery) return items;
-    return items.filter(
+  const currentItems = useMemo(() => {
+    switch (activeTab) {
+      case "classes": return archivedClasses;
+      case "students": return archivedStudents;
+      case "staff": return archivedStaff;
+      default: return [];
+    }
+  }, [activeTab, archivedClasses, archivedStudents, archivedStaff]);
+
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return currentItems;
+    return currentItems.filter(
       (item) =>
         item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.id?.toString().includes(searchQuery),
+        item.id?.toString().includes(searchQuery.toLowerCase()),
+    );
+  }, [currentItems, searchQuery]);
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredItems.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredItems.map((item) => item.id));
+    }
+  };
+
+  const toggleSelectItem = (id) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
   };
 
-  const handleDeleteClick = (item, type) => {
-    setItemToDelete({ ...item, type });
+  const handleBatchDelete = () => {
+    setItemToDelete({ type: activeTab, isBatch: true });
     setIsConfirmDeleteOpen(true);
+  };
+
+  const handleBatchRestore = async () => {
+    setIsProcessing(true);
+    try {
+      const tasks = selectedIds.map(id => {
+        if (activeTab === "classes") return unarchiveClass(id);
+        if (activeTab === "students") return unarchiveStudent(id);
+        if (activeTab === "staff") return unarchiveStaff(id);
+        return null;
+      });
+      await Promise.all(tasks);
+      setSelectedIds([]);
+    } catch (err) {
+      console.error("Batch restore failed", err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const confirmDelete = async () => {
     if (!itemToDelete) return;
-
+    setIsProcessing(true);
     try {
-      if (itemToDelete.type === "class") {
-        await deleteClass(itemToDelete.id);
-      } else if (itemToDelete.type === "student") {
-        await deleteStudent(itemToDelete.id);
-      } else if (itemToDelete.type === "staff") {
-        await deleteStaff(itemToDelete.id);
-      }
+      const idsToDelete = itemToDelete.isBatch ? selectedIds : [itemToDelete.id];
+      const tasks = idsToDelete.map(id => {
+        if (activeTab === "classes") return deleteClass(id);
+        if (activeTab === "students") return deleteStudent(id);
+        if (activeTab === "staff") return deleteStaff(id);
+        return null;
+      });
+      await Promise.all(tasks);
+      setSelectedIds([]);
       setIsConfirmDeleteOpen(false);
       setItemToDelete(null);
     } catch (err) {
       alert("Failed to delete permanently: " + err.message);
+    } finally {
+      setIsProcessing(false);
     }
-  };
-
-  const getTypeIcon = (type) => {
-    switch (type) {
-      case "class":
-        return <Archive className="w-5 h-5" />;
-      case "student":
-        return <GraduationCap className="w-5 h-5" />;
-      case "staff":
-        return <UserRound className="w-5 h-5" />;
-      default:
-        return <Inbox className="w-5 h-5" />;
-    }
-  };
-
-  const renderArchiveList = (items, type) => {
-    const filteredItems = getFilteredItems(items);
-
-    if (items.length === 0) {
-      return (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center justify-center py-20 bg-slate-50/50 dark:bg-slate-800/30 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-700/50"
-        >
-          <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 text-slate-400 dark:text-slate-500">
-            <Inbox className="w-10 h-10" />
-          </div>
-          <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
-            No Archived {type}s
-          </h3>
-          <p className="text-slate-500 dark:text-slate-400 font-medium text-center max-w-xs">
-            Any {type} you archive will appear here for restoration or permanent
-            deletion.
-          </p>
-        </motion.div>
-      );
-    }
-
-    if (filteredItems.length === 0) {
-      return (
-        <div className="py-12 text-center text-slate-500 dark:text-slate-400">
-          <p className="font-medium">No results matching "{searchQuery}"</p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid grid-cols-1 gap-4">
-        <AnimatePresence mode="popLayout">
-          {filteredItems.map((item) => (
-            <motion.div
-              layout
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              key={item.id}
-              className="group flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-2xl hover:border-primary-200 dark:hover:border-primary-800 hover:shadow-xl hover:shadow-primary-500/5 transition-all gap-4"
-            >
-              <div className="flex items-center gap-4">
-                <div
-                  className={`p-3 rounded-xl ${
-                    type === "class"
-                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                      : type === "student"
-                        ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400"
-                        : "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400"
-                  }`}
-                >
-                  {getTypeIcon(type)}
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800 dark:text-white text-lg group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                    {item.name}
-                  </h3>
-                  <div className="flex flex-wrap gap-2 mt-1.5">
-                    <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md text-[10px] font-bold tracking-wider uppercase">
-                      ID: {item.id}
-                    </span>
-                    {item.level && (
-                      <span className="inline-flex items-center px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 rounded-md text-[10px] font-bold tracking-wider uppercase">
-                        {item.level}
-                      </span>
-                    )}
-                    {item.role && (
-                      <span className="inline-flex items-center px-2 py-0.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 rounded-md text-[10px] font-bold tracking-wider uppercase">
-                        {item.role}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                <button
-                  onClick={() => {
-                    if (type === "class") unarchiveClass(item.id);
-                    if (type === "student") unarchiveStudent(item.id);
-                    if (type === "staff") unarchiveStaff(item.id);
-                  }}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white dark:hover:bg-emerald-600 transition-all rounded-xl font-bold text-sm"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Restore
-                </button>
-                <button
-                  onClick={() => handleDeleteClick(item, type)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white dark:hover:bg-red-600 transition-all rounded-xl font-bold text-sm"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Permanent Delete
-                </button>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-    );
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] shadow-sm border border-slate-100 dark:border-slate-800 transition-all overflow-hidden relative">
-      {/* Background Accent */}
-      <div className="absolute top-0 right-0 w-64 h-64 bg-primary-500/5 blur-[100px] -mr-32 -mt-32 pointer-events-none" />
-
-      <div className="relative z-10">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full text-xs font-bold mb-4">
-              <AlertCircle className="w-3 h-3" />
-              Administrative Tool
+    <div className="flex flex-col gap-6">
+      {/* Header Area */}
+      <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-primary-500/5 blur-[100px] -mr-32 -mt-32 pointer-events-none" />
+        
+        <div className="relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full text-[10px] font-black uppercase tracking-wider mb-4">
+                <AlertCircle className="w-3 h-3" />
+                Administrative Storage
+              </div>
+              <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tight mb-2">
+                System Archive
+              </h2>
+              <p className="text-slate-500 dark:text-slate-400 font-medium max-w-lg">
+                Restore accidentally deleted records or permanently purge them from the cloud.
+              </p>
             </div>
-            <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tight mb-2">
-              System Archive
-            </h2>
-            <p className="text-slate-500 dark:text-slate-400 font-medium max-w-lg">
-              Manage non-destructive deletions. Restore items to their original
-              place or permanently remove them from the system.
-            </p>
-          </div>
 
-          <div className="relative group min-w-[280px]">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
-            <input
-              type="text"
-              placeholder="Search archived items..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-500/20 transition-all"
-            />
-          </div>
-        </div>
-
-        {/* Internal Tabs */}
-        <div className="flex p-1.5 bg-slate-100 dark:bg-slate-800/50 rounded-2xl mb-8 w-fit border border-slate-200 dark:border-slate-700/30">
-          {[
-            {
-              id: "classes",
-              label: "Classes",
-              count: archivedClasses.length,
-              icon: <Archive className="w-4 h-4" />,
-            },
-            {
-              id: "students",
-              label: "Students",
-              count: archivedStudents.length,
-              icon: <GraduationCap className="w-4 h-4" />,
-            },
-            {
-              id: "staff",
-              label: "Staff",
-              count: archivedStaff.length,
-              icon: <UserRound className="w-4 h-4" />,
-            },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 relative ${
-                activeTab === tab.id
-                  ? "text-primary-600 dark:text-primary-400"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              {activeTab === tab.id && (
-                <motion.div
-                  layoutId="activeTabBg"
-                  className="absolute inset-0 bg-white dark:bg-slate-700 rounded-xl shadow-sm"
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <div className="relative group w-full sm:w-80">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
+                <input
+                  type="text"
+                  placeholder={`Search archived ${activeTab}...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-500/20 transition-all"
                 />
-              )}
-              <span className="relative z-10 flex items-center gap-2">
-                {tab.icon}
-                {tab.label}
-              </span>
-              {tab.count > 0 && (
-                <span
-                  className={`relative z-10 px-2 py-0.5 rounded-lg text-[10px] font-black ${
-                    activeTab === tab.id
-                      ? "bg-primary-100 dark:bg-primary-900/40 text-primary-600"
-                      : "bg-slate-200 dark:bg-slate-600 text-slate-500"
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        <div className="min-h-[400px]">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              {activeTab === "classes" &&
-                renderArchiveList(archivedClasses, "class")}
-              {activeTab === "students" &&
-                renderArchiveList(archivedStudents, "student")}
-              {activeTab === "staff" &&
-                renderArchiveList(archivedStaff, "staff")}
-            </motion.div>
-          </AnimatePresence>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* Main Content Area */}
+      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col min-h-[600px]">
+        {/* Navigation & Selection Toggle */}
+        <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex p-1 bg-slate-200/50 dark:bg-slate-900/50 rounded-xl">
+            {[
+              { id: "students", label: "Students", icon: <GraduationCap className="w-4 h-4" /> },
+              { id: "staff", label: "Staff", icon: <UserRound className="w-4 h-4" /> },
+              { id: "classes", label: "Classes", icon: <Archive className="w-4 h-4" /> },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id); setSelectedIds([]); }}
+                className={`px-5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                  activeTab === tab.id
+                    ? "bg-white dark:bg-slate-700 text-primary-600 dark:text-primary-400 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {filteredItems.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all"
+            >
+              {selectedIds.length === filteredItems.length ? (
+                <CheckSquare className="w-4 h-4 text-primary-500" />
+              ) : (
+                <Square className="w-4 h-4" />
+              )}
+              {selectedIds.length === filteredItems.length ? "Deselect All" : "Select All"}
+            </button>
+          )}
+        </div>
+
+        {/* List Content */}
+        <div className="flex-1 relative">
+          <AnimatePresence mode="wait">
+            {filteredItems.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col items-center justify-center py-20"
+              >
+                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 text-slate-300">
+                  <Inbox className="w-10 h-10" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">No archived records</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-sm">Everything is nice and clean.</p>
+              </motion.div>
+            ) : (
+              <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                {filteredItems.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className={`group flex items-center gap-4 p-4 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-all ${
+                      selectedIds.includes(item.id) ? "bg-primary-50/30 dark:bg-primary-900/10" : ""
+                    }`}
+                  >
+                    <button
+                      onClick={() => toggleSelectItem(item.id)}
+                      className="p-2 rounded-lg transition-all"
+                    >
+                      {selectedIds.includes(item.id) ? (
+                        <CheckCircle2 className="w-6 h-6 text-primary-500 fill-primary-500/10" />
+                      ) : (
+                        <div className="w-6 h-6 rounded-md border-2 border-slate-200 dark:border-slate-700 group-hover:border-primary-400 transition-all" />
+                      )}
+                    </button>
+
+                    <div className="flex-1 flex items-center justify-between pr-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 font-bold overflow-hidden">
+                          {item.name?.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-slate-800 dark:text-white">{item.name}</h4>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ID: {item.id}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          onClick={() => {
+                            if (activeTab === "classes") unarchiveClass(item.id);
+                            if (activeTab === "students") unarchiveStudent(item.id);
+                            if (activeTab === "staff") unarchiveStaff(item.id);
+                          }}
+                          title="Restore"
+                          className="p-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setItemToDelete(item)}
+                          title="Delete Permanently"
+                          className="p-2.5 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl hover:bg-rose-600 hover:text-white transition-all shadow-sm"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Batch Action Bar */}
+        <AnimatePresence>
+          {selectedIds.length > 0 && (
+            <motion.div
+              initial={{ y: 100 }}
+              animate={{ y: 0 }}
+              exit={{ y: 100 }}
+              className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 p-4 rounded-3xl shadow-2xl flex items-center justify-between z-50 border border-white/10 dark:border-slate-200"
+            >
+              <div className="flex items-center gap-3 pl-2">
+                <div className="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-xs font-black">
+                  {selectedIds.length}
+                </div>
+                <span className="text-sm font-bold tracking-tight">Items selected</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="px-4 py-2 text-xs font-bold hover:bg-white/10 dark:hover:bg-slate-100 rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBatchRestore}
+                  disabled={isProcessing}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-2xl text-xs font-black hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isProcessing ? 'animate-spin' : ''}`} />
+                  Restore Selected
+                </button>
+                <button
+                  onClick={handleBatchDelete}
+                  disabled={isProcessing}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-rose-500 text-white rounded-2xl text-xs font-black hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete All
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       <ConfirmModal
-        isOpen={isConfirmDeleteOpen}
-        onClose={() => setIsConfirmDeleteOpen(false)}
+        isOpen={!!itemToDelete}
+        onClose={() => setItemToDelete(null)}
         onConfirm={confirmDelete}
-        title="Delete Permanently"
-        message={`Are you sure you want to permanently delete this ${itemToDelete?.type}: ${itemToDelete?.name}? This action is irreversible and will remove all related academic history.`}
-        confirmText="Yes, Delete Forever"
+        title={itemToDelete?.isBatch ? `Delete ${selectedIds.length} Records?` : "Permanent Deletion"}
+        message={`Are you sure you want to permanently delete ${itemToDelete?.isBatch ? 'these items' : itemToDelete?.name}? This action cannot be undone.`}
+        confirmText={isProcessing ? "Processing..." : "Yes, Delete Forever"}
       />
     </div>
   );
