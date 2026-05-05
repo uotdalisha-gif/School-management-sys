@@ -11,6 +11,7 @@ import {
 const ClassesPageHeader = ({
   selectedClassIds,
   isAdmin,
+  isOffice,
   isConfigOpen,
   onDeleteSelected,
   onExportSelected,
@@ -32,19 +33,21 @@ const ClassesPageHeader = ({
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2 pb-4 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 w-[calc(100%+2rem)] md:w-auto">
-        {selectedClassIds.size > 0 && isAdmin && (
+        {selectedClassIds.size > 0 && (isAdmin || isOffice) && (
           <div className="flex items-center gap-2">
-            <DeleteSelectedButton
-              selectedCount={selectedClassIds.size}
-              onDelete={onDeleteSelected}
-            />
+            {isAdmin && (
+              <DeleteSelectedButton
+                selectedCount={selectedClassIds.size}
+                onDelete={onDeleteSelected}
+              />
+            )}
             <ExportSelectedButton
               selectedCount={selectedClassIds.size}
               onExport={onExportSelected}
             />
           </div>
         )}
-        {isAdmin && (
+        {(isAdmin || isOffice) && (
           <>
             <TemplateButton onDownload={onDownloadTemplate} />
             <ImportButton onImport={onImportClick} />

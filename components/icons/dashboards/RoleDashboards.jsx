@@ -259,7 +259,7 @@ export const AdminDashboard = ({ navigate }) => {
         />
         <Card title="Enrollment Trend" className="p-5!">
           <div className="h-20 w-[110%] -ml-2 -mb-2 text-primary-500 transition-colors duration-300">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <AreaChart data={enrollmentTrends}>
                 <defs>
                   <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
@@ -851,7 +851,14 @@ export const TeacherDashboard = ({ navigate }) => {
                     <div className="pt-2">
                       <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
                         <span>Grade Mix</span>
-                        <span>{Math.round(Math.random() * 20 + 70)}% Passing</span>
+                        <span>{
+                          (() => {
+                            const classGrades = (grades || []).filter(g => g.classId === c.id);
+                            if (classGrades.length === 0) return 0;
+                            const passed = classGrades.filter(g => Number(g.score) >= 5.0).length;
+                            return Math.round((passed / classGrades.length) * 100);
+                          })()
+                        }% Passing</span>
                       </div>
                       <div className="w-full h-2.5 flex rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 p-0.5 border border-slate-200/50 dark:border-slate-700 shadow-inner">
                         <div className="bg-emerald-500 rounded-l-full shadow-sm" style={{ width: "40%" }}></div>
@@ -936,7 +943,7 @@ export const TeacherDashboard = ({ navigate }) => {
             {/* 6. Weekly attendance bars */}
             <Card title="Weekly Attendance">
               <div className="h-40 mt-4">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={weeklyAttendanceData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-slate-200 dark:text-slate-800" />
                     <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />

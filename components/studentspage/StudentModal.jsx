@@ -6,7 +6,7 @@ import Modal from "../ui/Modal";
 // ─── Shared styles ────────────────────────────────────────────────────────────
 const labelCls = "block text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]";
 const inputCls =
-  "mt-1 w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 hover:border-primary-400 dark:hover:border-primary-600 transition-all duration-200";
+  "mt-1 w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 hover:border-primary-400 dark:hover:border-primary-500 transition-all duration-200";
 
 // ─── Field primitives ─────────────────────────────────────────────────────────
 const Field = ({ label, children, id }) => (
@@ -24,9 +24,9 @@ const Input = ({ label, id, ...props }) => (
 
 const Select = ({ label, id, options, ...props }) => (
   <Field label={label} id={id || props.name}>
-    <select id={id || props.name} className={inputCls} {...props}>
+    <select id={id || props.name} className={`${inputCls} appearance-none cursor-pointer`} {...props}>
       {options.map((o) => (
-        <option key={o} value={o}>
+        <option key={o} value={o} className="dark:bg-slate-800 dark:text-slate-100">
           {o}
         </option>
       ))}
@@ -159,13 +159,20 @@ const StudentModal = ({ studentData, onClose }) => {
             value={formData.phone}
             onChange={handleChange}
           />
-          <Select
-            label="Study Status"
-            name="status"
-            value={formData.status}
-            onChange={handleChange}
-            options={Object.values(StudentStatus)}
-          />
+          <div className="relative">
+            <Select
+              label="Study Status"
+              name="status"
+              value={formData.status}
+              onChange={handleChange}
+              options={Object.values(StudentStatus)}
+            />
+            {formData.status === StudentStatus.Dropout && (
+              <div className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-rose-500 text-white rounded-full animate-bounce shadow-lg">
+                <span className="text-[10px] font-black">!</span>
+              </div>
+            )}
+          </div>
           <Input
             label="Enrollment Date"
             type="date"
@@ -175,6 +182,17 @@ const StudentModal = ({ studentData, onClose }) => {
             required
           />
         </div>
+
+        {formData.status === StudentStatus.Dropout && (
+          <div className="p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 rounded-xl animate-in slide-in-from-top-2">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <p className="text-[11px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">Dropout status will archive the student from active lists</p>
+            </div>
+          </div>
+        )}
 
         {error && <ErrorBanner message={error} />}
 

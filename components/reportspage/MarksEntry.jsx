@@ -51,7 +51,7 @@ const MarksEntry = () => {
   // --- PERSISTED FILTERS ---
   const [selectedClassId, setSelectedClassId] = useSession("reports_marks_class", "");
   const [selectedTerm, setSelectedTerm] = useSession("reports_marks_term", "Midterm");
-  const [selectedDate, setSelectedDate] = useSession("reports_marks_date", new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useSession("reports_marks_date", new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]);
 
   // --- LOCAL STATE ---
   const [localGrades, setLocalGrades] = useState({});
@@ -152,11 +152,16 @@ const MarksEntry = () => {
     const directions = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], Enter: [1, 0], ArrowUp: [-1, 0] };
     const dir = directions[e.key];
     if (!dir) return;
+    
     e.preventDefault();
     const nextRow = Math.max(0, Math.min(classStudents.length - 1, row + dir[0]));
     const nextCol = Math.max(0, Math.min(classSubjects.length - 1, col + dir[1]));
+    
     const target = document.querySelector(`[data-cell="${nextRow}-${nextCol}"]`);
-    if (target) { target.focus(); target.select(); }
+    if (target && typeof target.focus === 'function') { 
+      target.focus(); 
+      if (typeof target.select === 'function') target.select(); 
+    }
   };
 
   const handleExportExcel = () => {

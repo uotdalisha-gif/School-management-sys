@@ -50,8 +50,13 @@ const StudentTableRow = ({
         };
       case StudentStatus.Dropout:
         return {
-          cls: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400 border border-slate-200 dark:border-slate-700",
-          dot: "bg-slate-500",
+          cls: "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 border border-rose-100 dark:border-rose-500/30",
+          dot: "bg-rose-500",
+        };
+      case StudentStatus.Pending:
+        return {
+          cls: "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50",
+          dot: "bg-indigo-500",
         };
       default:
         return {

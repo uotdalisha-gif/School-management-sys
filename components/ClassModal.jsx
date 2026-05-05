@@ -364,12 +364,6 @@ const ClassModal = ({ classData, onClose }) => {
             onChange={handleStudentSearch}
             suggestions={studentSuggestions}
             onSelect={(s) => { 
-              const existingEnr = enrollments.find(e => e.studentId === s.id && (classData ? e.classId !== classData.id : true));
-              if (existingEnr) {
-                const enrolledClass = classes.find(c => c.id === existingEnr.classId);
-                setError(`The student name ( ${s.name} ) is already in class ( ${enrolledClass?.name || 'another class'} )`);
-                return;
-              }
               setSelectedStudents(p => [...p, s]); 
               setStudentSearch(''); 
               setError('');

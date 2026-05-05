@@ -203,7 +203,7 @@ const getScoreStyle = (val) => {
 export const GradesModal = ({ classData, students, onClose }) => {
   const { grades, draftGrades, subjects: globalSubjects, saveDraftGradeBatch, clearDraftGrades } = useData();
   const [term, setTerm] = useState("Midterm");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]);
   const [scoreMap, setScoreMap] = useState({});
   const [isModified, setIsModified] = useState(false);
 
@@ -311,11 +311,16 @@ export const GradesModal = ({ classData, students, onClose }) => {
     const directions = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], Enter: [1, 0], ArrowUp: [-1, 0] };
     const dir = directions[e.key];
     if (!dir) return;
+
     e.preventDefault();
     const nextRow = Math.max(0, Math.min(students.length - 1, row + dir[0]));
     const nextCol = Math.max(0, Math.min(subjects.length - 1, col + dir[1]));
+
     const target = document.querySelector(`[data-cell="${nextRow}-${nextCol}"]`);
-    if (target) { target.focus(); target.select(); }
+    if (target && typeof target.focus === 'function') { 
+      target.focus(); 
+      if (typeof target.select === 'function') target.select(); 
+    }
   };
 
   return (

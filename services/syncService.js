@@ -40,7 +40,7 @@ export const syncService = {
     if (!navigator.onLine || !supabase) return;
 
     try {
-      const { error } = await supabase.rpc('sync_school_data_v7', {
+      const { error } = await supabase.rpc('sync_school_data_v8', {
         p_students: (payload.students || []).map(mapStudent.toDb),
         p_staff: (payload.staff || []).map(mapStaff.toDb),
         p_classes: (payload.classes || []).map(mapClass.toDb),

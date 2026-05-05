@@ -328,7 +328,9 @@ const StudentsPage = () => {
             >
               <option value="All">All Status</option>
               <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
+              <option value="Suspended">Suspended</option>
+              <option value="Dropout">Dropout</option>
+              <option value="Pending">Pending</option>
             </select>
 
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">

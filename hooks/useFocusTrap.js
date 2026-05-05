@@ -18,35 +18,38 @@ export const useFocusTrap = (isActive) => {
       const focusableElements = container.querySelectorAll(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       );
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
+      
+      if (focusableElements.length > 0) {
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
 
-      if (firstElement) firstElement.focus();
+        if (firstElement) firstElement.focus();
 
-      const handleKeyDown = (e) => {
-        if (e.key !== 'Tab') return;
+        const handleKeyDown = (e) => {
+          if (e.key !== 'Tab') return;
 
-        if (e.shiftKey) {
-          if (document.activeElement === firstElement) {
-            e.preventDefault();
-            lastElement.focus();
+          if (e.shiftKey) {
+            if (document.activeElement === firstElement) {
+              e.preventDefault();
+              lastElement.focus();
+            }
+          } else {
+            if (document.activeElement === lastElement) {
+              e.preventDefault();
+              firstElement.focus();
+            }
           }
-        } else {
-          if (document.activeElement === lastElement) {
-            e.preventDefault();
-            firstElement.focus();
+        };
+
+        container.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+          container.removeEventListener('keydown', handleKeyDown);
+          if (previousFocusRef.current && previousFocusRef.current.focus) {
+            previousFocusRef.current.focus();
           }
-        }
-      };
-
-      container.addEventListener('keydown', handleKeyDown);
-
-      return () => {
-        container.removeEventListener('keydown', handleKeyDown);
-        if (previousFocusRef.current && previousFocusRef.current.focus) {
-          previousFocusRef.current.focus();
-        }
-      };
+        };
+      }
     }
   }, [isActive]);
 

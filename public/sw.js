@@ -37,9 +37,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // 1. Never cache Supabase or localhost development
+  // 1. Never cache Supabase or localhost development or chrome extensions
   if (url.hostname.includes('supabase.co')) return;
   if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
+  if (url.protocol.startsWith('chrome-extension')) return;
 
   // 2. Navigation: Network-First with Cache-Fallback
   if (event.request.mode === 'navigate') {

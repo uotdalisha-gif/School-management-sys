@@ -64,10 +64,30 @@ export const pushConfig = async (key, value) => {
 export async function fetchCollection(table, mapper) {
   console.log(`🔍 Fetching collection: ${table}`);
   
-  // 1. Always try local first so the screen shows something immediately
+  // 1. Get local data first
   const localData = localStore.get(table, []);
+  const isDirty = localStore.isDirty(table);
+
+  const mapItem = (item) => {
+    if (!mapper) return item;
+    try {
+      if (typeof mapper === 'function') {
+        return mapper.fromDb ? mapper.fromDb(item) : mapper(item);
+      }
+      return mapper.fromDb ? mapper.fromDb(item) : item;
+    } catch (e) {
+      return item;
+    }
+  };
+
+  // 2. If local data is dirty, we MUST NOT overwrite it with DB data
+  // and we should return the local data to the UI to maintain consistency.
+  if (isDirty) {
+    console.log(`⚠️ Table ${table} is dirty. Prioritizing local data.`);
+    return localData.map(mapItem);
+  }
   
-  // 2. Background fetch from Supabase if possible
+  // 3. If not dirty, background fetch from Supabase if possible
   if (navigator.onLine && supabase) {
     try {
       const { data, error } = await supabase
@@ -77,16 +97,6 @@ export async function fetchCollection(table, mapper) {
       if (!error && data) {
         console.log(`✅ Fetched ${data.length} items for ${table} from Supabase`);
         localStore.set(table, data);
-        
-        const mapItem = (item) => {
-          if (!mapper) return item;
-          try {
-            return (typeof mapper === 'function' && mapper.fromDb) ? mapper.fromDb(item) : (typeof mapper === 'function' ? mapper(item) : (mapper.fromDb ? mapper.fromDb(item) : item));
-          } catch (e) {
-            return item;
-          }
-        };
-
         return data.map(mapItem);
       }
     } catch (supaErr) {
@@ -94,18 +104,8 @@ export async function fetchCollection(table, mapper) {
     }
   }
 
-  // 3. Return local data if online fetch failed or we are offline
-  if (mapper) {
-    return localData.map(item => {
-      try {
-        return (typeof mapper === 'function' && mapper.fromDb) ? mapper.fromDb(item) : (typeof mapper === 'function' ? mapper(item) : (mapper.fromDb ? mapper.fromDb(item) : item));
-      } catch (e) {
-        return item;
-      }
-    });
-  }
-  
-  return localData;
+  // 4. Return local data if online fetch failed or we are offline
+  return localData.map(mapItem);
 }
 
 export async function pushCollection(table, items, mapper) {
@@ -121,6 +121,7 @@ export async function deleteRecord(table, id) {
     table,
     currentLocal.filter((item) => item && item.id !== id)
   );
+  localStore.setDirty(table, true);
 
   // 2. Delete from Supabase
   if (navigator.onLine && supabase) {
